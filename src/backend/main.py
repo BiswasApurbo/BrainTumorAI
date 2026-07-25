@@ -8,8 +8,11 @@ from typing import Any
 
 from fastapi import FastAPI
 
+from backend.api.v1.router import router as api_v1_router
 from backend.core.config import settings
 from backend.core.lifespan import lifespan
+from backend.exceptions.handlers import register_exception_handlers
+from backend.middleware.cors import setup_cors
 
 
 ResponsePayload = dict[str, Any]
@@ -21,6 +24,10 @@ app = FastAPI(
     debug=settings.debug,
     lifespan=lifespan,
 )
+
+setup_cors(app)
+register_exception_handlers(app)
+app.include_router(api_v1_router, prefix=settings.api_prefix)
 
 
 @app.get("/")

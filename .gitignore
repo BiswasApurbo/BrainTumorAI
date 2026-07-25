@@ -10,6 +10,17 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
 
-outputs/logs/
-!outputs/logs/.gitkeep
+outputs/
+logs/
+datasets/
+models/
+
+*.nii
+*.nii.gz
+
+*.log
+*.tmp
+*.cache
+

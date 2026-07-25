@@ -5,6 +5,7 @@ deletion helpers for medical imaging files. It is independent of API routing
 and does not perform preprocessing, inference, segmentation, or reporting.
 """
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -173,10 +174,13 @@ class UploadService:
 
         file_size_bytes = 0
 
-        with destination.open("wb") as stored_file:
+        stored_file = await asyncio.to_thread(destination.open, "wb")
+        try:
             while chunk := await file.read(CHUNK_SIZE_BYTES):
                 file_size_bytes += len(chunk)
-                stored_file.write(chunk)
+                await asyncio.to_thread(stored_file.write, chunk)
+        finally:
+            await asyncio.to_thread(stored_file.close)
 
         return file_size_bytes
 

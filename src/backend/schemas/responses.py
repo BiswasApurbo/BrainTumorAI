@@ -73,7 +73,7 @@ class UploadResponse(BaseModel):
 
 
 class InferenceResponse(BaseModel):
-    """Response schema for queued inference requests.
+    """Response schema for queued or completed inference requests.
 
     Attributes:
         request_id: Unique identifier assigned to the inference request.
@@ -81,6 +81,11 @@ class InferenceResponse(BaseModel):
         status: Current inference request status.
         message: Human-readable status message.
         created_at: UTC-aware timestamp when the request was created.
+        report_id: Optional unique identifier for the generated diagnostic report.
+        visualization_path: Optional path to the 3D Plotly HTML visualization.
+        tumor_mask_path: Optional path to the tumor segmentation mask.
+        anatomy_mask_path: Optional path to the anatomy segmentation mask.
+        volumetric_analysis: Optional quantitative volumetric measurements dictionary.
     """
 
     request_id: UUID = Field(
@@ -102,6 +107,26 @@ class InferenceResponse(BaseModel):
     created_at: AwareDatetime = Field(
         ...,
         description="UTC-aware timestamp when the request was created.",
+    )
+    report_id: UUID | None = Field(
+        default=None,
+        description="Optional unique identifier for the generated report.",
+    )
+    visualization_path: str | None = Field(
+        default=None,
+        description="Optional path to the 3D Plotly HTML visualization.",
+    )
+    tumor_mask_path: str | None = Field(
+        default=None,
+        description="Optional path to the tumor segmentation mask.",
+    )
+    anatomy_mask_path: str | None = Field(
+        default=None,
+        description="Optional path to the anatomy segmentation mask.",
+    )
+    volumetric_analysis: dict[str, float] | None = Field(
+        default=None,
+        description="Optional quantitative volumetric measurements dictionary.",
     )
 
 

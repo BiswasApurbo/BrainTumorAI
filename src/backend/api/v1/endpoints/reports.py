@@ -1,17 +1,16 @@
 """Reports endpoints for the BrainTumorAI API.
 
-This module exposes read-only API routes for future AI-generated diagnostic
-reports. It does not generate reports, run inference, or modify files.
+This module exposes API routes for managing diagnostic reports, delegating all
+storage, retrieval, listing, and deletion logic to the injected ``ReportService``.
 """
 
-from datetime import datetime, timezone
-from pathlib import Path
-from uuid import UUID
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from ....core.config import settings
+from ....dependencies import get_report_service
+from ....services.report_service import ReportService
 
 
 router = APIRouter()
@@ -42,7 +41,7 @@ class ReportResponse(BaseModel):
         report_id: Identifier for the requested report.
         status: Availability status for the report.
         path: Filesystem path to the report.
-        created_at: UTC ISO 8601 timestamp derived from file metadata.
+        created_at: UTC ISO 8601 timestamp derived from report metadata.
     """
 
     report_id: str
@@ -52,19 +51,32 @@ class ReportResponse(BaseModel):
 
 
 @router.get("", response_model=ReportsListResponse)
-async def list_reports() -> ReportsListResponse:
+async def list_reports(
+    report_service: Annotated[ReportService, Depends(get_report_service)],
+) -> ReportsListResponse:
     """Return a paginated list of available reports.
 
-    Report generation is not implemented yet, so the endpoint returns an empty
-    first page while preserving the response shape expected by clients.
+    Args:
+        report_service: Injected report management service instance.
 
     Returns:
         A JSON-serializable paginated reports response.
     """
 
+    metadatas = report_service.list_reports()
+    reports = [
+        {
+            "report_id": str(m.report_id),
+            "upload_id": str(m.upload_id),
+            "status": m.status,
+            "created_at": m.created_at.isoformat(),
+        }
+        for m in metadatas
+    ]
+
     return ReportsListResponse(
-        reports=[],
-        total=0,
+        reports=reports,
+        total=len(reports),
         page=1,
         page_size=20,
         status="ready",
@@ -72,99 +84,76 @@ async def list_reports() -> ReportsListResponse:
 
 
 @router.get("/{report_id}", response_model=ReportResponse)
-async def get_report(report_id: str) -> ReportResponse:
+async def get_report(
+    report_id: str,
+    report_service: Annotated[ReportService, Depends(get_report_service)],
+) -> ReportResponse:
     """Return metadata for an available report.
 
     Args:
         report_id: Unique report identifier supplied in the route path.
+        report_service: Injected report management service instance.
 
     Returns:
         A JSON-serializable payload describing the available report.
 
     Raises:
         HTTPException: If the report identifier is invalid or the report does
-        not exist in the configured reports directory.
+        not exist.
     """
 
-    normalized_report_id = _normalize_report_id(report_id)
-    report_path = _find_report_path(normalized_report_id)
-    if report_path is None:
+    try:
+        report = report_service.get_report(report_id)
+    except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Report was not found.",
-        )
-
-    return ReportResponse(
-        report_id=normalized_report_id,
-        status="available",
-        path=str(report_path),
-        created_at=_get_file_created_at(report_path),
-    )
-
-
-def _normalize_report_id(report_id: str) -> str:
-    """Validate and normalize a report identifier.
-
-    Args:
-        report_id: Raw report identifier from the path parameter.
-
-    Returns:
-        Canonical string representation of the report UUID.
-
-    Raises:
-        HTTPException: If the report identifier is blank or invalid.
-    """
-
-    candidate = report_id.strip()
-    if not candidate:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="report_id must be provided.",
-        )
-
-    try:
-        return str(UUID(candidate))
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="report_id must be a valid UUID.",
+            detail=str(exc),
         ) from exc
 
+    path_val = (
+        str(report.content.get("path", ""))
+        if isinstance(report.content, dict)
+        else ""
+    )
 
-def _find_report_path(report_id: str) -> Path | None:
-    """Find a report file for a report identifier.
-
-    Args:
-        report_id: Canonical report UUID string.
-
-    Returns:
-        Matching report path when present, otherwise ``None``.
-    """
-
-    reports_directory = Path(settings.reports_directory)
-    exact_report_path = reports_directory / report_id
-    if exact_report_path.is_file():
-        return exact_report_path
-
-    return next(
-        (
-            path
-            for path in reports_directory.glob(f"{report_id}.*")
-            if path.is_file()
-        ),
-        None,
+    return ReportResponse(
+        report_id=str(report.report_id),
+        status=report.status,
+        path=path_val,
+        created_at=report.created_at.isoformat(),
     )
 
 
-def _get_file_created_at(path: Path) -> str:
-    """Return an ISO 8601 UTC timestamp for a report file.
+@router.delete("/{report_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_report(
+    report_id: str,
+    report_service: Annotated[ReportService, Depends(get_report_service)],
+) -> None:
+    """Delete an available report.
 
     Args:
-        path: Existing report file path.
+        report_id: Unique report identifier supplied in the route path.
+        report_service: Injected report management service instance.
 
-    Returns:
-        UTC ISO 8601 timestamp derived from the file metadata.
+    Raises:
+        HTTPException: If the report identifier is invalid or the report does
+        not exist.
     """
 
-    created_at = datetime.fromtimestamp(path.stat().st_ctime, tz=timezone.utc)
-    return created_at.isoformat()
+    try:
+        report_service.delete_report(report_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report was not found.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
