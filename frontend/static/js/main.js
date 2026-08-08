@@ -28,7 +28,7 @@ async function runAnalysis() {
         // The backend strictly expects exactly 1 file attached to the "file" field.
         // We append the primary sequence to "file" and others are sent in the payload.
         const uploadFormData = new FormData();
-        uploadFormData.append('file', flairFile); 
+        uploadFormData.append('flair', flairFile); 
         uploadFormData.append('t1', t1File);
         uploadFormData.append('t1ce', t1ceFile);
         uploadFormData.append('t2', t2File);
