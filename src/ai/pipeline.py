@@ -119,8 +119,9 @@ class AIPipeline:
                 voxel_spacing = normalized_brats.voxel_spacing
 
                 if job.mode == "ground_truth" and brats_case.segmentation_path:
-                    import shutil
-                    shutil.copy(brats_case.segmentation_path, workspace.tumor_mask_path)
+                    import nibabel as nib
+                    img = nib.load(str(brats_case.segmentation_path))
+                    nib.save(img, str(workspace.tumor_mask_path))
                     tumor_result = TumorSegmentationResult(mask_path=workspace.tumor_mask_path)
                 else:
                     # 2. Tumor Segmentation (nnUNet) — receives NormalizedBraTSCase
