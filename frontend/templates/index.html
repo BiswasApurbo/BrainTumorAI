@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BrainTumorAI - Medical Imaging Analysis</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1>BrainTumorAI</h1>
+            <p>Advanced MRI Tumor Segmentation & Analysis</p>
+        </div>
+    </header>
+
+    <main class="main-content container">
+        <div class="upload-card">
+            <h2>Start New Analysis</h2>
+            <p>Please upload the four required MRI modalities to begin.</p>
+            
+            <form id="upload-form" class="upload-form" onsubmit="event.preventDefault(); runAnalysis();">
+                <div class="form-group">
+                    <label for="flair">FLAIR</label>
+                    <input type="file" id="flair" accept=".nii,.nii.gz">
+                </div>
+                
+                <div class="form-group">
+                    <label for="t1">T1</label>
+                    <input type="file" id="t1" accept=".nii,.nii.gz">
+                </div>
+                
+                <div class="form-group">
+                    <label for="t1ce">T1CE</label>
+                    <input type="file" id="t1ce" accept=".nii,.nii.gz">
+                </div>
+                
+                <div class="form-group">
+                    <label for="t2">T2</label>
+                    <input type="file" id="t2" accept=".nii,.nii.gz">
+                </div>
+                
+                <button type="submit" class="analyze-btn">Analyze</button>
+            </form>
+            
+            <div id="processing-container" class="hidden">
+                <div class="spinner"></div>
+                <p>Processing... Please wait. This may take a few minutes.</p>
+            </div>
+            
+            <div id="status-message" class="status-message hidden"></div>
+            
+            <div id="results-container" class="results-container hidden">
+                <h3>Analysis Complete</h3>
+                <div class="result-item">
+                    <strong>Request ID:</strong> <span id="res-request-id"></span>
+                </div>
+                <div class="result-item">
+                    <strong>Report ID:</strong> <span id="res-report-id"></span>
+                </div>
+                <div class="result-item">
+                    <strong>Generated Files:</strong>
+                    <ul id="res-files-list"></ul>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

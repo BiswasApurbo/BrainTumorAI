@@ -48,22 +48,9 @@ class UploadResponse(BaseModel):
         ...,
         description="Unique identifier assigned to the upload.",
     )
-    original_filename: str = Field(
-        ...,
-        description="Original filename supplied by the client.",
-    )
-    stored_filename: str = Field(
-        ...,
-        description="Server-side filename used to store the upload.",
-    )
-    file_size_bytes: int = Field(
-        ...,
-        ge=0,
-        description="Uploaded file size in bytes.",
-    )
     upload_directory: str = Field(
         ...,
-        description="Directory where the upload was stored.",
+        description="Directory where the uploaded modalities were stored.",
     )
     upload_timestamp: AwareDatetime = Field(
         ...,

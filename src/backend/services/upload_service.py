@@ -27,16 +27,10 @@ class UploadMetadata:
 
     Attributes:
         upload_id: Unique identifier assigned to the upload.
-        original_filename: Sanitized original filename supplied by the client.
-        stored_filename: Server-side filename used to store the upload.
-        file_size_bytes: Uploaded file size in bytes.
         upload_directory: Directory where the upload was stored.
     """
 
     upload_id: UUID
-    original_filename: str
-    stored_filename: str
-    file_size_bytes: int
     upload_directory: Path
 
 
@@ -60,40 +54,47 @@ class UploadService:
             upload_directory or settings.uploads_directory
         )
 
-    async def save_upload(self, file: UploadFile) -> UploadMetadata:
-        """Validate and persist an uploaded medical imaging file.
+    async def save_upload(
+        self,
+        flair: UploadFile,
+        t1: UploadFile,
+        t1ce: UploadFile,
+        t2: UploadFile,
+    ) -> UploadMetadata:
+        """Validate and persist four uploaded BraTS medical imaging files.
 
         Args:
-            file: FastAPI upload file object to persist.
+            flair: FLAIR modality file.
+            t1: T1 modality file.
+            t1ce: T1CE modality file.
+            t2: T2 modality file.
 
         Returns:
-            Metadata describing the stored upload.
+            Metadata describing the stored upload directory.
 
         Raises:
-            ValueError: If the file is missing a valid filename, has an
-            unsupported extension, or is empty.
-            OSError: If the file cannot be written to storage.
+            ValueError: If a file has an unsupported extension or is empty.
+            OSError: If files cannot be written to storage.
         """
 
-        original_filename = self._get_safe_original_filename(file)
-        extension = self.validate_extension(original_filename)
         upload_id = uuid4()
-        stored_filename = f"{upload_id}{extension}"
-        destination = self.upload_directory / stored_filename
+        case_dir = self.upload_directory / str(upload_id)
+        case_dir.mkdir(parents=True, exist_ok=True)
 
-        self.upload_directory.mkdir(parents=True, exist_ok=True)
-        file_size_bytes = await self._write_upload(file, destination)
-
-        if file_size_bytes == 0:
-            destination.unlink(missing_ok=True)
-            raise ValueError("Uploaded file is empty.")
+        for modality_name, file in [("flair", flair), ("t1", t1), ("t1ce", t1ce), ("t2", t2)]:
+            original_filename = self._get_safe_original_filename(file)
+            extension = self.validate_extension(original_filename)
+            stored_filename = f"{upload_id}_{modality_name}{extension}"
+            destination = case_dir / stored_filename
+            
+            file_size_bytes = await self._write_upload(file, destination)
+            if file_size_bytes == 0:
+                destination.unlink(missing_ok=True)
+                raise ValueError(f"Uploaded file {modality_name} is empty.")
 
         return UploadMetadata(
             upload_id=upload_id,
-            original_filename=original_filename,
-            stored_filename=stored_filename,
-            file_size_bytes=file_size_bytes,
-            upload_directory=self.upload_directory,
+            upload_directory=case_dir,
         )
 
     def validate_extension(self, filename: str) -> str:
@@ -117,14 +118,14 @@ class UploadService:
 
         raise ValueError("Unsupported file extension.")
 
-    def get_uploaded_file(self, upload_id: UUID | str) -> Path:
-        """Locate a stored uploaded file by upload identifier.
+    def get_uploaded_directory(self, upload_id: UUID | str) -> Path:
+        """Locate a stored uploaded directory by upload identifier.
 
         Args:
             upload_id: Upload UUID or UUID string to locate.
 
         Returns:
-            Path to the stored uploaded file.
+            Path to the stored uploaded directory.
 
         Raises:
             ValueError: If the upload identifier is invalid.
@@ -132,9 +133,9 @@ class UploadService:
         """
 
         normalized_upload_id = self._normalize_upload_id(upload_id)
-        upload_path = self._find_upload_path(normalized_upload_id)
-        if upload_path is None:
-            raise FileNotFoundError("Uploaded file was not found.")
+        upload_path = self.upload_directory / normalized_upload_id
+        if not upload_path.is_dir():
+            raise FileNotFoundError("Uploaded directory was not found.")
 
         return upload_path
 
@@ -153,8 +154,9 @@ class UploadService:
             OSError: If the file cannot be deleted.
         """
 
-        upload_path = self.get_uploaded_file(upload_id)
-        upload_path.unlink()
+        upload_path = self.get_uploaded_directory(upload_id)
+        import shutil
+        shutil.rmtree(upload_path)
         return True
 
     async def _write_upload(

@@ -9,7 +9,14 @@ import os
 import shutil
 import subprocess
 import sys
+import multiprocessing as mp
 from pathlib import Path
+
+if sys.platform == "darwin":
+    try:
+        mp.set_start_method("fork", force=True)
+    except RuntimeError:
+        pass
 
 from backend.core.config import settings
 from backend.core.logging import get_logger
@@ -114,7 +121,7 @@ class NNUNetAdapter(BaseModelAdapter):
         )
 
         nnunet_cli = shutil.which("nnUNet_predict")
-        if nnunet_cli:
+        if nnunet_cli and sys.platform != "darwin":
             cmd = [
                 nnunet_cli,
                 "-i", str(input_dir),
@@ -127,8 +134,21 @@ class NNUNetAdapter(BaseModelAdapter):
                 "--num_threads_nifti_save", "1",
             ]
         else:
-            cmd = [
-                sys.executable, "-m", "nnunet.inference.predict_simple",
+            if sys.platform == "darwin":
+                # macOS requires forcing the multiprocessing start method to 'fork'
+                # to avoid pickling errors in nnUNet's multiprocessing.Process workers.
+                cmd = [
+                    sys.executable, "-c",
+                    "import sys; import multiprocessing as mp; "
+                    "mp.set_start_method('fork', force=True); "
+                    "from nnunet.inference.predict_simple import main; "
+                    "sys.argv[0] = 'nnUNet_predict'; "
+                    "sys.exit(main())"
+                ]
+            else:
+                cmd = [sys.executable, "-m", "nnunet.inference.predict_simple"]
+
+            cmd.extend([
                 "-i", str(input_dir),
                 "-o", str(output_dir),
                 "-t", self.task_name,
@@ -137,7 +157,7 @@ class NNUNetAdapter(BaseModelAdapter):
                 "-p", plans_identifier,
                 "--num_threads_preprocessing", "1",
                 "--num_threads_nifti_save", "1",
-            ]
+            ])
 
         logger.info("Executing nnUNet model inference command: %s", " ".join(cmd))
 
@@ -148,21 +168,23 @@ class NNUNetAdapter(BaseModelAdapter):
                     env=env,
                     capture_output=True,
                     text=True,
-                    check=False,
-                    timeout=600,
+                    check=True,
+                    timeout=14400,
                 )
-                if result.returncode != 0:
-                    logger.warning("nnUNet CLI returned code %d; checking output file.", result.returncode)
             except FileNotFoundError:
-                logger.warning("nnUNet executable not present on PATH.")
+                raise ModelInferenceError("nnUNet executable not present on PATH.")
             except subprocess.TimeoutExpired as exc:
-                raise ModelInferenceError("nnUNet model inference execution timed out after 600 seconds.", detail=str(exc)) from exc
+                raise ModelInferenceError("nnUNet model inference execution timed out after 14400 seconds.", detail=str(exc)) from exc
+            except subprocess.CalledProcessError as exc:
+                logger.error("nnUNet stderr:\n%s", exc.stderr)
+                logger.error("nnUNet stdout:\n%s", exc.stdout)
+                raise ModelInferenceError(f"nnUNet inference failed with code {exc.returncode}.", detail=exc.stderr) from exc
 
             predicted_file = output_dir / "scan.nii.gz"
             if predicted_file.exists():
                 shutil.copy2(predicted_file, output_mask_path)
             else:
-                shutil.copy2(fallback_src, output_mask_path)
+                raise ModelInferenceError("nnUNet completed but no output mask was found.")
 
             counts = self._parse_mask_counts(output_mask_path)
 
@@ -191,10 +213,8 @@ class NNUNetAdapter(BaseModelAdapter):
     def _parse_mask_counts(mask_path: Path) -> dict[str, int]:
         """Parse NCR (label 1), ED (label 2), and ET (label 4) voxel counts from NIfTI mask."""
 
-        default_counts = {"ncr": 2000, "ed": 5000, "et": 3000}
-
         if not mask_path.exists() or mask_path.stat().st_size == 0:
-            return default_counts
+            return {"ncr": 0, "ed": 0, "et": 0}
 
         try:
             import nibabel as nib
@@ -203,10 +223,10 @@ class NNUNetAdapter(BaseModelAdapter):
             img = nib.load(str(mask_path))
             data = img.get_fdata()
 
-            ncr = int(np.sum(data == 1)) or default_counts["ncr"]
-            ed = int(np.sum(data == 2)) or default_counts["ed"]
-            et = int(np.sum(data == 4)) or default_counts["et"]
+            ncr = int(np.sum(data == 1))
+            ed = int(np.sum(data == 2))
+            et = int(np.sum(data == 4))
 
             return {"ncr": ncr, "ed": ed, "et": et}
         except Exception:
-            return default_counts
+            return {"ncr": 0, "ed": 0, "et": 0}

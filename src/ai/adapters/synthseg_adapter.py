@@ -73,7 +73,6 @@ class SynthSegAdapter(BaseModelAdapter):
             "--vol",
             str(csv_vol_path),
             "--v1",
-            "--cpu",
         ]
 
         env = dict(os.environ)

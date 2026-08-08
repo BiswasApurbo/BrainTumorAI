@@ -201,24 +201,23 @@ class InferenceService:
         )
 
     def validate_input(self, upload_id: UUID | str) -> tuple[UUID, Path]:
-        """Validate that an upload exists and uses a supported file format.
+        """Validate that an upload exists.
 
         Args:
             upload_id: Upload UUID or UUID string to validate.
 
         Returns:
-            A tuple containing the normalized upload UUID and uploaded file
+            A tuple containing the normalized upload UUID and uploaded directory
             path.
 
         Raises:
-            ValueError: If the upload identifier or file extension is invalid.
-            FileNotFoundError: If the uploaded file cannot be found.
+            ValueError: If the upload identifier is invalid.
+            FileNotFoundError: If the uploaded directory cannot be found.
         """
 
         normalized_upload_id = self._normalize_uuid(upload_id, "upload_id")
-        input_path = self.upload_service.get_uploaded_file(normalized_upload_id)
-        self.upload_service.validate_extension(input_path.name)
-        return normalized_upload_id, input_path
+        input_dir = self.upload_service.get_uploaded_directory(normalized_upload_id)
+        return normalized_upload_id, input_dir
 
     def create_inference_request_from_path(
         self,
