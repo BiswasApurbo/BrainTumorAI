@@ -223,11 +223,17 @@ class Preprocessor:
                 sp_y = round(float(abs(canon_zooms[1])), 3) if len(canon_zooms) > 1 else 1.0
                 sp_z = round(float(abs(canon_zooms[2])), 3) if len(canon_zooms) > 2 else 1.0
             else:
-                shutil.copy2(input_path, output_path)
+                nib.save(img, str(output_path))
                 orientation = axcodes
 
             return (dim_x, dim_y, dim_z), (sp_x, sp_y, sp_z), orientation
 
         except Exception:
-            shutil.copy2(input_path, output_path)
+            try:
+                import nibabel as nib
+                fallback_img = nib.load(str(input_path))
+                nib.save(fallback_img, str(output_path))
+            except Exception:
+                # If we cannot even load it, creating a valid NIfTI is impossible here.
+                pass
             return default_dims, default_spacing, self.target_orientation
