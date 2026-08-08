@@ -60,6 +60,7 @@ class UploadService:
         t1: UploadFile,
         t1ce: UploadFile,
         t2: UploadFile,
+        seg: UploadFile | None = None,
     ) -> UploadMetadata:
         """Validate and persist four uploaded BraTS medical imaging files.
 
@@ -81,7 +82,11 @@ class UploadService:
         case_dir = self.upload_directory / str(upload_id)
         case_dir.mkdir(parents=True, exist_ok=True)
 
-        for modality_name, file in [("flair", flair), ("t1", t1), ("t1ce", t1ce), ("t2", t2)]:
+        files_to_save = [("flair", flair), ("t1", t1), ("t1ce", t1ce), ("t2", t2)]
+        if seg is not None:
+            files_to_save.append(("seg", seg))
+
+        for modality_name, file in files_to_save:
             original_filename = self._get_safe_original_filename(file)
             extension = self.validate_extension(original_filename)
             stored_filename = f"{upload_id}_{modality_name}{extension}"

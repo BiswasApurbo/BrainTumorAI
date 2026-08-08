@@ -13,9 +13,16 @@ async function runAnalysis() {
     const t1File = document.getElementById('t1').files[0];
     const t1ceFile = document.getElementById('t1ce').files[0];
     const t2File = document.getElementById('t2').files[0];
+    const segFile = document.getElementById('seg').files[0];
+    const mode = document.querySelector('input[name="mode"]:checked').value;
     
     if (!flairFile || !t1File || !t1ceFile || !t2File) {
         showError('Please select all four MRI modalities (FLAIR, T1, T1CE, T2).');
+        return;
+    }
+    
+    if (mode === 'ground_truth' && !segFile) {
+        showError('Please select a SEG (Ground Truth) file for Ground Truth mode.');
         return;
     }
     
@@ -28,10 +35,14 @@ async function runAnalysis() {
         // The backend strictly expects exactly 1 file attached to the "file" field.
         // We append the primary sequence to "file" and others are sent in the payload.
         const uploadFormData = new FormData();
+        uploadFormData.append('mode', mode);
         uploadFormData.append('flair', flairFile); 
         uploadFormData.append('t1', t1File);
         uploadFormData.append('t1ce', t1ceFile);
         uploadFormData.append('t2', t2File);
+        if (mode === 'ground_truth' && segFile) {
+            uploadFormData.append('seg', segFile);
+        }
         
         const uploadResponse = await fetch('/api/v1/upload', {
             method: 'POST',
@@ -53,7 +64,7 @@ async function runAnalysis() {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ upload_id: uploadId })
+            body: JSON.stringify({ upload_id: uploadId, mode: mode })
         });
         
         if (!inferenceResponse.ok) {
@@ -68,6 +79,11 @@ async function runAnalysis() {
         showSuccess(inferenceData.message || 'Analysis completed successfully!');
         
         // Display returned metadata
+        const modeLabel = mode === 'ground_truth' ? 'Ground Truth' : 'AI Prediction';
+        const sourceLabel = mode === 'ground_truth' ? 'Uploaded SEG Mask' : 'nnUNet Prediction';
+        document.getElementById('res-mode').textContent = modeLabel;
+        document.getElementById('res-source').textContent = sourceLabel;
+        
         document.getElementById('res-request-id').textContent = inferenceData.request_id || 'N/A';
         document.getElementById('res-report-id').textContent = inferenceData.report_id || 'N/A';
         
@@ -106,4 +122,14 @@ function showSuccess(message) {
     const statusDiv = document.getElementById('status-message');
     statusDiv.textContent = message;
     statusDiv.className = 'status-message success';
+}
+
+function toggleSegInput() {
+    const mode = document.querySelector('input[name="mode"]:checked').value;
+    const segGroup = document.getElementById('seg-group');
+    if (mode === 'ground_truth') {
+        segGroup.classList.remove('hidden');
+    } else {
+        segGroup.classList.add('hidden');
+    }
 }

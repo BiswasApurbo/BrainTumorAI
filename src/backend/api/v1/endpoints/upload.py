@@ -8,7 +8,7 @@ does not perform preprocessing, inference, reporting, or visualization.
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from ....dependencies import get_upload_service
 from ....schemas.responses import UploadResponse
@@ -29,6 +29,8 @@ async def upload_file(
     t1: UploadFile = File(...),
     t1ce: UploadFile = File(...),
     t2: UploadFile = File(...),
+    mode: str = Form("prediction"),
+    seg: UploadFile | None = File(None),
     upload_service: UploadService = Depends(get_upload_service),
 ) -> UploadResponse:
     """Store a single supported medical imaging file for future inference.
@@ -49,12 +51,19 @@ async def upload_file(
         an unsupported extension, is empty, or cannot be stored.
     """
 
+    if mode == "ground_truth" and not seg:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="SEG file is required in Ground Truth mode.",
+        )
+
     try:
         metadata = await upload_service.save_upload(
             flair=flair,
             t1=t1,
             t1ce=t1ce,
             t2=t2,
+            seg=seg,
         )
     except ValueError as exc:
         detail = str(exc)

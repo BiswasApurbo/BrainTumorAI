@@ -75,6 +75,7 @@ class InferenceJob:
     request_id: UUID
     upload_id: UUID
     input_path: Path
+    mode: str = "prediction"
     status: PipelineStatus = PipelineStatus.QUEUED
     created_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
@@ -158,7 +159,7 @@ class InferenceService:
         self._jobs: dict[UUID, InferenceJob] = {}
         self._lock = threading.Lock()
 
-    def create_inference_request(self, upload_id: UUID | str) -> InferenceMetadata:
+    def create_inference_request(self, upload_id: UUID | str, mode: str = "prediction") -> InferenceMetadata:
         """Create a queued inference job for an uploaded medical image and execute pipeline.
 
         Args:
@@ -177,6 +178,7 @@ class InferenceService:
             request_id=uuid4(),
             upload_id=normalized_upload_id,
             input_path=input_path,
+            mode=mode,
         )
         with self._lock:
             self._jobs[job.request_id] = job

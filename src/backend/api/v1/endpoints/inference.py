@@ -33,6 +33,10 @@ class InferenceRequest(BaseModel):
         min_length=1,
         description="Identifier returned by the upload endpoint.",
     )
+    mode: str = Field(
+        default="prediction",
+        description="Visualization mode ('prediction' or 'ground_truth')."
+    )
 
 
 class InferenceFromPathRequest(BaseModel):
@@ -106,7 +110,10 @@ async def create_inference_request(
     logger.info("Received inference request for upload_id: %s", request.upload_id)
 
     try:
-        metadata = inference_service.create_inference_request(request.upload_id)
+        metadata = inference_service.create_inference_request(
+            request.upload_id,
+            mode=request.mode,
+        )
     except FileNotFoundError as exc:
         logger.warning("Upload file not found for upload_id %s: %s", request.upload_id, exc)
         raise HTTPException(

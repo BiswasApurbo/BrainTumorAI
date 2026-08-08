@@ -12,7 +12,7 @@ from backend.core.logging import get_logger
 from backend.services.report_service import ReportService
 from ai.adapters.nnunet_adapter import NNUNetAdapter
 from ai.adapters.synthseg_adapter import SynthSegAdapter
-from ai.contracts import AIPipelineResult, BraTSCase, NormalizedBraTSCase, NormalizedScan
+from ai.contracts import AIPipelineResult, BraTSCase, NormalizedBraTSCase, NormalizedScan, TumorSegmentationResult
 from ai.exceptions import AIProcessingError
 from ai.processing.postprocessing import PostProcessor
 from ai.processing.preprocessing import Preprocessor
@@ -118,11 +118,16 @@ class AIPipeline:
 
                 voxel_spacing = normalized_brats.voxel_spacing
 
-                # 2. Tumor Segmentation (nnUNet) — receives NormalizedBraTSCase
-                tumor_result = self.nnunet_adapter.predict(
-                    input_scan=normalized_brats,
-                    output_mask_path=workspace.tumor_mask_path,
-                )
+                if job.mode == "ground_truth" and brats_case.segmentation_path:
+                    import shutil
+                    shutil.copy(brats_case.segmentation_path, workspace.tumor_mask_path)
+                    tumor_result = TumorSegmentationResult(mask_path=workspace.tumor_mask_path)
+                else:
+                    # 2. Tumor Segmentation (nnUNet) — receives NormalizedBraTSCase
+                    tumor_result = self.nnunet_adapter.predict(
+                        input_scan=normalized_brats,
+                        output_mask_path=workspace.tumor_mask_path,
+                    )
 
                 # 3. Brain Anatomy Segmentation (SynthSeg) — receives NormalizedScan (FLAIR)
                 anatomy_result = self.synthseg_adapter.predict(

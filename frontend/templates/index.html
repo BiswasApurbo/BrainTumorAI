@@ -20,6 +20,18 @@
             <p>Please upload the four required MRI modalities to begin.</p>
             
             <form id="upload-form" class="upload-form" onsubmit="event.preventDefault(); runAnalysis();">
+                <div class="form-group mode-selection">
+                    <label>Visualization Mode</label>
+                    <div class="radio-group">
+                        <label>
+                            <input type="radio" name="mode" value="prediction" checked onchange="toggleSegInput()"> AI Prediction
+                        </label>
+                        <label>
+                            <input type="radio" name="mode" value="ground_truth" onchange="toggleSegInput()"> Ground Truth (requires SEG file)
+                        </label>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label for="flair">FLAIR</label>
                     <input type="file" id="flair" accept=".nii,.nii.gz">
@@ -40,6 +52,11 @@
                     <input type="file" id="t2" accept=".nii,.nii.gz">
                 </div>
                 
+                <div class="form-group hidden" id="seg-group">
+                    <label for="seg">SEG (Ground Truth)</label>
+                    <input type="file" id="seg" accept=".nii,.nii.gz">
+                </div>
+                
                 <button type="submit" class="analyze-btn">Analyze</button>
             </form>
             
@@ -52,6 +69,12 @@
             
             <div id="results-container" class="results-container hidden">
                 <h3>Analysis Complete</h3>
+                <div class="result-item">
+                    <strong>Visualization Mode:</strong> <span id="res-mode"></span>
+                </div>
+                <div class="result-item">
+                    <strong>Segmentation Source:</strong> <span id="res-source"></span>
+                </div>
                 <div class="result-item">
                     <strong>Request ID:</strong> <span id="res-request-id"></span>
                 </div>
