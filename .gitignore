@@ -1,26 +1,69 @@
+# ==============================================================================
+# BrainTumorAI — Production Git Ignore Configuration
+# ==============================================================================
+
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+*$py.class
+*.pyc
 
-.DS_Store
-
-.env
+# Virtual Environments & Packages
 .venv/
 venv/
+env/
+node_modules/
 
+# Environment Variables & Secrets
+.env
+.env.production
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# Testing, Coverage & Linters
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
+htmlcov/
 
-outputs/
-logs/
-datasets/
+# Machine Learning Checkpoints, Weights & Release Bundles
 models/
+!models/.gitkeep
+models_release/
+checkpoints/
+*.ckpt
+*.pth
+*.pt
+*.model
+*.onnx
+*.engine
+*.h5
+*.keras
+*.pkl
 
+# Medical Imaging Data & Tensors
+datasets/
+!datasets/.gitkeep
 *.nii
 *.nii.gz
+*.mha
+*.mhd
+*.nrrd
+*.npz
+*.npy
 
+# Generated Outputs, Temporary Files & Logs
+outputs/
+!outputs/**/.gitkeep
+logs/
+cache/
 *.log
 *.tmp
 *.cache
-
+*.zip
+*.tar
+*.tar.gz
+*.gz
