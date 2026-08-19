@@ -33,13 +33,7 @@ Environment="MKL_NUM_THREADS=4"
 # - Single worker (--workers 1) prevents GPU VRAM Out-Of-Memory during 15-fold nnUNet ensemble
 # - Bound to 127.0.0.1:8000 (Internal only; external traffic routed via Nginx reverse proxy)
 # - --proxy-headers & --forwarded-allow-ips ensure real client IPs & HTTPS protocol forwarded from Nginx
-ExecStart=/home/azureuser/BrainTumorAI/venv/bin/uvicorn backend.main:app \
-    --host 127.0.0.1 \
-    --port 8000 \
-    --workers 1 \
-    --proxy-headers \
-    --forwarded-allow-ips="*" \
-    --log-level info
+ExecStart=/home/azureuser/BrainTumorAI/venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips * --log-level info
 
 # Process Management & Resiliency
 Restart=always
