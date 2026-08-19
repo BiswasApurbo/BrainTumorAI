@@ -1,0 +1,42 @@
+# ==============================================================================
+# BrainTumorAI — Systemd Service Unit File
+# Target Path: /etc/systemd/system/braintumorai.service
+# ==============================================================================
+
+[Unit]
+Description=BrainTumorAI FastAPI Medical Inference Backend
+Documentation=https://github.com/BiswasApurbo/BrainTumorAI
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=azureuser
+Group=azureuser
+WorkingDirectory=/home/azureuser/BrainTumorAI
+
+# Runtime Environment Variables
+Environment="PATH=/home/azureuser/BrainTumorAI/venv/bin:/home/azureuser/BrainTumorAI/.venv/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin"
+Environment="PYTHONPATH=/home/azureuser/BrainTumorAI/src"
+Environment="TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1"
+
+# Production Uvicorn Execution Command
+# Binding strictly to 127.0.0.1:8000 (Localhost only for Nginx reverse proxy)
+ExecStart=/home/azureuser/BrainTumorAI/venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1 --log-level info
+
+# Process Management & Automatic Recovery
+Restart=always
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=60
+
+# Logging to Systemd Journal (viewable via journalctl -u braintumorai -f)
+StandardOutput=journal
+StandardError=journal
+
+# System Limits for Deep Learning Inference
+LimitNOFILE=65536
+LimitNPROC=32768
+
+[Install]
+WantedBy=multi-user.target
