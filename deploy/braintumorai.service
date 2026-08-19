@@ -1,5 +1,5 @@
 # ==============================================================================
-# BrainTumorAI — Systemd Service Unit File
+# BrainTumorAI — Production Systemd Service Unit File
 # Target Path: /etc/systemd/system/braintumorai.service
 # ==============================================================================
 
@@ -9,34 +9,61 @@ Documentation=https://github.com/BiswasApurbo/BrainTumorAI
 After=network.target network-online.target
 Wants=network-online.target
 
+# Restart Rate Limiting: max 5 restarts within 300 seconds to prevent crash loops
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
 [Service]
 Type=simple
 User=azureuser
 Group=azureuser
 WorkingDirectory=/home/azureuser/BrainTumorAI
 
-# Runtime Environment Variables
+# Runtime Environment Configuration
+EnvironmentFile=-/home/azureuser/BrainTumorAI/.env
 Environment="PATH=/home/azureuser/BrainTumorAI/venv/bin:/home/azureuser/BrainTumorAI/.venv/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin"
 Environment="PYTHONPATH=/home/azureuser/BrainTumorAI/src"
+Environment="PYTHONUNBUFFERED=1"
 Environment="TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1"
+Environment="CUDA_VISIBLE_DEVICES=0"
+Environment="OMP_NUM_THREADS=4"
+Environment="MKL_NUM_THREADS=4"
 
 # Production Uvicorn Execution Command
-# Binding strictly to 127.0.0.1:8000 (Localhost only for Nginx reverse proxy)
-ExecStart=/home/azureuser/BrainTumorAI/venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1 --log-level info
+# - Single worker (--workers 1) prevents GPU VRAM Out-Of-Memory during 15-fold nnUNet ensemble
+# - Bound to 127.0.0.1:8000 (Internal only; external traffic routed via Nginx reverse proxy)
+# - --proxy-headers & --forwarded-allow-ips ensure real client IPs & HTTPS protocol forwarded from Nginx
+ExecStart=/home/azureuser/BrainTumorAI/venv/bin/uvicorn backend.main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 1 \
+    --proxy-headers \
+    --forwarded-allow-ips="*" \
+    --log-level info
 
-# Process Management & Automatic Recovery
+# Process Management & Resiliency
 Restart=always
 RestartSec=5
 KillMode=mixed
+TimeoutStartSec=300
 TimeoutStopSec=60
 
-# Logging to Systemd Journal (viewable via journalctl -u braintumorai -f)
+# Logging Outputs
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=braintumorai
 
-# System Limits for Deep Learning Inference
+# System Resource & File Descriptor Limits for Heavy DL Workloads
 LimitNOFILE=65536
 LimitNPROC=32768
+LimitMEMLOCK=infinity
+
+# Security & Sandboxing Hardening
+UMask=0027
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=false
 
 [Install]
 WantedBy=multi-user.target
