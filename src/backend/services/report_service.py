@@ -9,14 +9,17 @@ The public API is designed so that the in-memory store can be replaced by a
 persistent database backend without changing method signatures or return types.
 """
 
+import os
+import shutil
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+from backend.core.config import settings
 from backend.core.logging import get_logger
-
 
 logger = get_logger(__name__)
 
@@ -48,7 +51,7 @@ class ReportMetadata:
 
 
 class ReportService:
-    """Manage diagnostic reports for the BrainTumorAI backend."""
+    """Manage diagnostic reports and their transient filesystem artifacts."""
 
     def __init__(self) -> None:
         """Initialize the report management service."""
@@ -56,7 +59,7 @@ class ReportService:
         self._reports: dict[UUID, Report] = {}
         self._upload_index: dict[UUID, UUID] = {}
         self._lock = threading.Lock()
-        logger.info("ReportService initialised.")
+        logger.info("ReportService initialized.")
 
     def store_report(
         self,
@@ -64,6 +67,8 @@ class ReportService:
         content: dict[str, Any],
         status: str = "completed",
     ) -> ReportMetadata:
+        """Store a new diagnostic report."""
+
         normalized_upload_id = self._normalize_uuid(upload_id, "upload_id")
 
         with self._lock:
@@ -82,7 +87,7 @@ class ReportService:
             self._upload_index[normalized_upload_id] = report.report_id
 
         logger.info(
-            "Report %s stored for upload %s.",
+            "Report %s created for upload %s.",
             report.report_id,
             normalized_upload_id,
         )
@@ -94,17 +99,46 @@ class ReportService:
             created_at=report.created_at,
         )
 
-    def get_report(self, upload_id: UUID | str) -> Report:
-        normalized_upload_id = self._normalize_uuid(upload_id, "upload_id")
+    def get_report(self, identifier: UUID | str) -> Report:
+        """Retrieve a report by report_id or upload_id."""
+
+        normalized_id = self._normalize_uuid(identifier, "report_id")
         with self._lock:
-            report_id = self._upload_index.get(normalized_upload_id)
-            if report_id is None:
-                raise KeyError(
-                    f"No report found for upload {normalized_upload_id}."
-                )
-            return self._reports[report_id]
+            if normalized_id in self._reports:
+                return self._reports[normalized_id]
+            if normalized_id in self._upload_index:
+                report_id = self._upload_index[normalized_id]
+                return self._reports[report_id]
+
+            raise KeyError(f"No report found for identifier {normalized_id}.")
+
+    def get_report_path(self, identifier: UUID | str) -> Path:
+        """Locate the standalone 3D HTML visualization file for a report."""
+
+        report = self.get_report(identifier)
+        vis_path_raw = (
+            report.content.get("visualization_path")
+            if isinstance(report.content, dict)
+            else None
+        )
+
+        if vis_path_raw:
+            path = Path(vis_path_raw)
+            if path.is_file() and path.exists():
+                return path
+
+        # Fallback to standard convention in outputs/visualizations/
+        fallback_path = settings.outputs_directory / "visualizations" / f"{report.upload_id}_3d.html"
+        if fallback_path.is_file() and fallback_path.exists():
+            return fallback_path
+
+        raise FileNotFoundError(
+            f"HTML visualization file for report {report.report_id} was not found on disk."
+        )
 
     def list_reports(self) -> list[ReportMetadata]:
+        """List all active diagnostic reports."""
+
         with self._lock:
             return [
                 ReportMetadata(
@@ -116,44 +150,97 @@ class ReportService:
                 for report in self._reports.values()
             ]
 
-    def delete_report(self, upload_id: UUID | str) -> bool:
-        normalized_upload_id = self._normalize_uuid(upload_id, "upload_id")
+    def delete_report_and_artifacts(self, identifier: UUID | str) -> bool:
+        """Safely delete the report metadata and all associated disk artifacts."""
+
+        normalized_id = self._normalize_uuid(identifier, "report_id")
+
         with self._lock:
-            report_id = self._upload_index.get(normalized_upload_id)
-            if report_id is None:
-                raise KeyError(
-                    f"No report found for upload {normalized_upload_id}."
-                )
-            del self._reports[report_id]
-            del self._upload_index[normalized_upload_id]
+            report = None
+            if normalized_id in self._reports:
+                report = self._reports.pop(normalized_id)
+                self._upload_index.pop(report.upload_id, None)
+            elif normalized_id in self._upload_index:
+                rep_id = self._upload_index.pop(normalized_id)
+                report = self._reports.pop(rep_id, None)
+
+        if report is None:
+            logger.warning("Attempted to delete non-existent report %s", normalized_id)
+            return False
 
         logger.info(
-            "Report %s deleted for upload %s.",
-            report_id,
-            normalized_upload_id,
+            "Report %s downloaded. Beginning automatic artifact cleanup...",
+            report.report_id,
         )
 
+        # 1. Delete HTML visualization file
+        try:
+            vis_path_raw = report.content.get("visualization_path") if isinstance(report.content, dict) else None
+            if vis_path_raw:
+                html_path = Path(vis_path_raw)
+                if html_path.exists():
+                    html_path.unlink(missing_ok=True)
+                    logger.info("Deleted visualization artifact: %s", html_path.name)
+        except Exception as exc:
+            logger.error("Failed to delete visualization artifact for %s: %s", report.report_id, exc)
+
+        # 2. Delete Uploaded files directory
+        try:
+            upload_dir = settings.uploads_directory / str(report.upload_id)
+            if upload_dir.exists() and upload_dir.is_dir():
+                shutil.rmtree(upload_dir, ignore_errors=True)
+                logger.info("Deleted uploaded patient directory: %s", upload_dir.name)
+        except Exception as exc:
+            logger.error("Failed to delete upload directory for %s: %s", report.upload_id, exc)
+
+        # 3. Clean any residual workspaces
+        try:
+            workspace_dir = settings.outputs_directory / "workspaces" / str(report.upload_id)
+            if workspace_dir.exists() and workspace_dir.is_dir():
+                shutil.rmtree(workspace_dir, ignore_errors=True)
+        except Exception as exc:
+            logger.debug("No residual workspace for %s: %s", report.upload_id, exc)
+
+        logger.info("Successfully completed automatic cleanup for report %s.", report.report_id)
         return True
 
-    def report_exists(self, upload_id: UUID | str) -> bool:
-        normalized_upload_id = self._normalize_uuid(upload_id, "upload_id")
+    def delete_report(self, identifier: UUID | str) -> bool:
+        """Alias for delete_report_and_artifacts."""
+        return self.delete_report_and_artifacts(identifier)
+
+    def report_exists(self, identifier: UUID | str) -> bool:
+        """Check if report exists by report_id or upload_id."""
+
+        try:
+            normalized_id = self._normalize_uuid(identifier, "report_id")
+        except ValueError:
+            return False
+
         with self._lock:
-            return normalized_upload_id in self._upload_index
+            return normalized_id in self._reports or normalized_id in self._upload_index
+
+    def cleanup_expired_reports(self, max_age_hours: int = 24) -> int:
+        """Purge all reports and artifacts older than max_age_hours."""
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        expired_ids: list[UUID] = []
+
+        with self._lock:
+            for report in self._reports.values():
+                if report.created_at < cutoff:
+                    expired_ids.append(report.report_id)
+
+        purged_count = 0
+        for rep_id in expired_ids:
+            logger.info("Purging expired report %s (created > %d hours ago)", rep_id, max_age_hours)
+            if self.delete_report_and_artifacts(rep_id):
+                purged_count += 1
+
+        return purged_count
 
     @staticmethod
     def _normalize_uuid(value: UUID | str, field_name: str) -> UUID:
-        """Normalize a UUID value.
-
-        Args:
-            value: UUID or UUID string to normalize.
-            field_name: Field name used in validation error messages.
-
-        Returns:
-            Normalized UUID value.
-
-        Raises:
-            ValueError: If the supplied value is blank or not a valid UUID.
-        """
+        """Normalize a UUID value."""
 
         if isinstance(value, UUID):
             return value

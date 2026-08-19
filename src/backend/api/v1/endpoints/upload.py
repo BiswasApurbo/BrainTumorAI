@@ -83,7 +83,6 @@ async def upload_file(
 
     return UploadResponse(
         upload_id=metadata.upload_id,
-        upload_directory=str(metadata.upload_directory),
         upload_timestamp=datetime.now(timezone.utc),
         status="uploaded",
     )

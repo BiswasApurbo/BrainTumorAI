@@ -5,6 +5,7 @@ the backend. The schemas describe response structure only and do not contain
 endpoint or business logic.
 """
 
+from typing import Any
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, Field
@@ -36,10 +37,6 @@ class UploadResponse(BaseModel):
 
     Attributes:
         upload_id: Unique identifier assigned to the upload.
-        original_filename: Original filename supplied by the client.
-        stored_filename: Server-side filename used to store the upload.
-        file_size_bytes: Uploaded file size in bytes.
-        upload_directory: Directory where the upload was stored.
         upload_timestamp: UTC-aware timestamp when the upload was stored.
         status: Current upload status.
     """
@@ -47,10 +44,6 @@ class UploadResponse(BaseModel):
     upload_id: UUID = Field(
         ...,
         description="Unique identifier assigned to the upload.",
-    )
-    upload_directory: str = Field(
-        ...,
-        description="Directory where the uploaded modalities were stored.",
     )
     upload_timestamp: AwareDatetime = Field(
         ...,
@@ -69,9 +62,7 @@ class InferenceResponse(BaseModel):
         message: Human-readable status message.
         created_at: UTC-aware timestamp when the request was created.
         report_id: Optional unique identifier for the generated diagnostic report.
-        visualization_path: Optional path to the 3D Plotly HTML visualization.
-        tumor_mask_path: Optional path to the tumor segmentation mask.
-        anatomy_mask_path: Optional path to the anatomy segmentation mask.
+        download_url: Optional endpoint URL to securely download the generated analysis report.
         volumetric_analysis: Optional quantitative volumetric measurements dictionary.
     """
 
@@ -99,19 +90,11 @@ class InferenceResponse(BaseModel):
         default=None,
         description="Optional unique identifier for the generated report.",
     )
-    visualization_path: str | None = Field(
+    download_url: str | None = Field(
         default=None,
-        description="Optional path to the 3D Plotly HTML visualization.",
+        description="Optional endpoint URL to securely download the generated analysis report.",
     )
-    tumor_mask_path: str | None = Field(
-        default=None,
-        description="Optional path to the tumor segmentation mask.",
-    )
-    anatomy_mask_path: str | None = Field(
-        default=None,
-        description="Optional path to the anatomy segmentation mask.",
-    )
-    volumetric_analysis: dict[str, float] | None = Field(
+    volumetric_analysis: dict[str, Any] | None = Field(
         default=None,
         description="Optional quantitative volumetric measurements dictionary.",
     )
@@ -124,6 +107,7 @@ class ReportSummary(BaseModel):
         report_id: Unique identifier for the diagnostic report.
         status: Current report status.
         created_at: UTC-aware timestamp when the report became available.
+        download_url: Endpoint URL to securely download the analysis report.
     """
 
     report_id: UUID = Field(
@@ -135,6 +119,10 @@ class ReportSummary(BaseModel):
         ...,
         description="UTC-aware timestamp when the report became available.",
     )
+    download_url: str = Field(
+        ...,
+        description="Endpoint URL to securely download the analysis report.",
+    )
 
 
 class ReportDetail(BaseModel):
@@ -143,7 +131,7 @@ class ReportDetail(BaseModel):
     Attributes:
         report_id: Unique identifier for the diagnostic report.
         status: Current report status.
-        path: Filesystem path to the report.
+        download_url: Endpoint URL to securely download the analysis report.
         created_at: UTC-aware timestamp when the report became available.
     """
 
@@ -152,7 +140,10 @@ class ReportDetail(BaseModel):
         description="Unique identifier for the diagnostic report.",
     )
     status: str = Field(..., description="Current report status.")
-    path: str = Field(..., description="Filesystem path to the report.")
+    download_url: str = Field(
+        ...,
+        description="Endpoint URL to securely download the analysis report.",
+    )
     created_at: AwareDatetime = Field(
         ...,
         description="UTC-aware timestamp when the report became available.",

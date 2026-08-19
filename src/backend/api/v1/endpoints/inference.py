@@ -66,9 +66,7 @@ class InferenceResponse(BaseModel):
         message: Human-readable request status message.
         created_at: UTC ISO 8601 timestamp for request creation.
         report_id: Optional unique identifier for the generated diagnostic report.
-        visualization_path: Optional path to the 3D Plotly HTML visualization.
-        tumor_mask_path: Optional path to the tumor segmentation mask.
-        anatomy_mask_path: Optional path to the anatomy segmentation mask.
+        download_url: Optional endpoint URL to securely download the generated analysis report.
         volumetric_analysis: Optional quantitative volumetric measurements dictionary.
     """
 
@@ -78,9 +76,7 @@ class InferenceResponse(BaseModel):
     message: str
     created_at: str
     report_id: str | None = None
-    visualization_path: str | None = None
-    tumor_mask_path: str | None = None
-    anatomy_mask_path: str | None = None
+    download_url: str | None = None
     volumetric_analysis: dict[str, Any] | None = None
 
 
@@ -213,16 +209,17 @@ def _build_response(metadata: Any, *, message: str) -> InferenceResponse:
         else str(metadata.status)
     )
 
+    report_id_str = str(metadata.report_id) if metadata.report_id else None
+    download_url = f"/api/v1/reports/{report_id_str}/download" if report_id_str else None
+
     return InferenceResponse(
         request_id=str(metadata.request_id),
         upload_id=str(metadata.upload_id),
         status=status_value,
         message=message,
         created_at=metadata.created_at.isoformat(),
-        report_id=str(metadata.report_id) if metadata.report_id else None,
-        visualization_path=str(metadata.visualization_path) if metadata.visualization_path else None,
-        tumor_mask_path=str(metadata.tumor_mask_path) if metadata.tumor_mask_path else None,
-        anatomy_mask_path=str(metadata.anatomy_mask_path) if metadata.anatomy_mask_path else None,
+        report_id=report_id_str,
+        download_url=download_url,
         volumetric_analysis=metadata.volumetric_analysis,
     )
 

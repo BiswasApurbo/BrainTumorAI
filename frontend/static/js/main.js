@@ -87,20 +87,22 @@ async function runAnalysis() {
         document.getElementById('res-request-id').textContent = inferenceData.request_id || 'N/A';
         document.getElementById('res-report-id').textContent = inferenceData.report_id || 'N/A';
         
-        const filesList = document.getElementById('res-files-list');
-        filesList.innerHTML = ''; // clear previous
-        
-        const addFileToList = (name, path) => {
-            if (path) {
-                const li = document.createElement('li');
-                li.innerHTML = `<strong>${name}:</strong> ${path}`;
-                filesList.appendChild(li);
-            }
-        };
-        
-        addFileToList('Visualization', inferenceData.visualization_path);
-        addFileToList('Tumor Mask', inferenceData.tumor_mask_path);
-        addFileToList('Anatomy Mask', inferenceData.anatomy_mask_path);
+        // Configure Download Report Button
+        const downloadBtn = document.getElementById('download-report-btn');
+        if (inferenceData.report_id && downloadBtn) {
+            const downloadUrl = `/api/v1/reports/${inferenceData.report_id}/download`;
+            downloadBtn.href = downloadUrl;
+            downloadBtn.className = 'download-btn';
+            downloadBtn.textContent = 'Download Report';
+            downloadBtn.onclick = function() {
+                setTimeout(() => {
+                    downloadBtn.className = 'download-btn disabled';
+                    downloadBtn.textContent = 'Report Downloaded & Purged';
+                    downloadBtn.removeAttribute('href');
+                    downloadBtn.onclick = (e) => e.preventDefault();
+                }, 1000);
+            };
+        }
         
         resultsContainer.classList.remove('hidden');
         
