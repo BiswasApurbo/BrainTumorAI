@@ -136,6 +136,47 @@ class ReportService:
             f"HTML visualization file for report {report.report_id} was not found on disk."
         )
 
+    def claim_report_for_download(self, identifier: UUID | str) -> tuple[Report, Path]:
+        """Atomically claim a report for download.
+
+        Guarantees that if multiple concurrent requests (e.g. two browser tabs)
+        attempt to download the report simultaneously, only ONE request can succeed
+        and claim the report.
+        """
+
+        normalized_id = self._normalize_uuid(identifier, "report_id")
+        with self._lock:
+            report = None
+            if normalized_id in self._reports:
+                report = self._reports[normalized_id]
+            elif normalized_id in self._upload_index:
+                rep_id = self._upload_index[normalized_id]
+                report = self._reports.get(rep_id)
+
+            if report is None or report.status in ("downloading", "purged"):
+                raise KeyError(f"Report {normalized_id} not found or already downloaded.")
+
+            # Resolve file path
+            vis_path_raw = (
+                report.content.get("visualization_path")
+                if isinstance(report.content, dict)
+                else None
+            )
+            path = (
+                Path(vis_path_raw)
+                if vis_path_raw
+                else (settings.outputs_directory / "visualizations" / f"{report.upload_id}_3d.html")
+            )
+
+            if not path.is_file() or not path.exists():
+                raise FileNotFoundError(
+                    f"Report HTML file missing on disk for {normalized_id}."
+                )
+
+            # Atomically transition status to downloading to prevent concurrent downloads
+            report.status = "downloading"
+            return report, path
+
     def list_reports(self) -> list[ReportMetadata]:
         """List all active diagnostic reports."""
 
@@ -148,6 +189,7 @@ class ReportService:
                     created_at=report.created_at,
                 )
                 for report in self._reports.values()
+                if report.status != "purged"
             ]
 
     def delete_report_and_artifacts(self, identifier: UUID | str) -> bool:
@@ -165,7 +207,7 @@ class ReportService:
                 report = self._reports.pop(rep_id, None)
 
         if report is None:
-            logger.warning("Attempted to delete non-existent report %s", normalized_id)
+            logger.debug("Report %s already cleaned up or does not exist.", normalized_id)
             return False
 
         logger.info(
@@ -220,14 +262,14 @@ class ReportService:
             return normalized_id in self._reports or normalized_id in self._upload_index
 
     def cleanup_expired_reports(self, max_age_hours: int = 24) -> int:
-        """Purge all reports and artifacts older than max_age_hours."""
+        """Purge all reports and orphan artifacts older than max_age_hours."""
 
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        cutoff_time = (datetime.now(timezone.utc) - timedelta(hours=max_age_hours)).timestamp()
         expired_ids: list[UUID] = []
 
         with self._lock:
-            for report in self._reports.values():
-                if report.created_at < cutoff:
+            for report in list(self._reports.values()):
+                if report.created_at.timestamp() < cutoff_time:
                     expired_ids.append(report.report_id)
 
         purged_count = 0
@@ -235,6 +277,23 @@ class ReportService:
             logger.info("Purging expired report %s (created > %d hours ago)", rep_id, max_age_hours)
             if self.delete_report_and_artifacts(rep_id):
                 purged_count += 1
+
+        # Also sweep disk directories for any orphan artifacts from prior restarts
+        for folder_name in ("visualizations", "uploads", "workspaces"):
+            target_dir = settings.outputs_directory / folder_name
+            if not target_dir.exists() or not target_dir.is_dir():
+                continue
+            for item in target_dir.iterdir():
+                try:
+                    if item.stat().st_mtime < cutoff_time:
+                        if item.is_dir():
+                            shutil.rmtree(item, ignore_errors=True)
+                        else:
+                            item.unlink(missing_ok=True)
+                        logger.info("Swept orphan disk artifact: %s/%s", folder_name, item.name)
+                        purged_count += 1
+                except Exception as exc:
+                    logger.debug("Failed sweeping %s: %s", item, exc)
 
         return purged_count
 

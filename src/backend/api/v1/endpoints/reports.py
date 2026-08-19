@@ -109,10 +109,9 @@ async def download_report(
     """
 
     try:
-        report = report_service.get_report(report_id)
-        file_path = report_service.get_report_path(report_id)
+        report, file_path = report_service.claim_report_for_download(report_id)
     except (KeyError, FileNotFoundError) as exc:
-        logger.warning("Report %s not found or already purged: %s", report_id, exc)
+        logger.warning("Report %s not found, currently downloading, or already purged: %s", report_id, exc)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Report not found or no longer available.",
